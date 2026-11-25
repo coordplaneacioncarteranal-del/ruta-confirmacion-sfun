@@ -49,7 +49,20 @@
   .brand-kicker { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #93C5FD; font-weight: 700; }
   .brand-title { font-size: 20px; font-weight: 800; letter-spacing: -.2px; }
   .brand-sub { font-size: 12px; color: #CBD5E1; margin-top: 2px; }
-  .export-bar { display: flex; flex-wrap: wrap; gap: 8px; }
+  .export-bar { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+  .reg-dl-select {
+    background: #fff;
+    color: var(--navy);
+    border: 2px solid #93C5FD;
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 12.5px;
+    font-weight: 800;
+    cursor: pointer;
+    min-width: 175px;
+    outline: none;
+  }
+  .btn-purple { background: #7C3AED; color: #fff; }
   .btn {
     border: none;
     border-radius: 8px;
@@ -320,10 +333,14 @@
       <div class="brand-sub">Actualizado: 2026-11-25 14:29  |  Cruce Previsión + Inicial + Anotaciones (ASESOR_COBRANZA) + Radar Multicanal de Pagos</div>
     </div>
     <div class="export-bar">
-      <button class="btn btn-blue"  onclick="exportSinNovedad(false)">📥 Ruta Sin Nov. (Sin Pago)</button>
-      <button class="btn btn-teal"  onclick="exportSinNovPagos(false)">💵 Sin Nov. con Pagos</button>
-      <button class="btn btn-green" onclick="exportConfirmadas()">✅ Confirmadas (Cambio Fase)</button>
-      <button class="btn btn-amber" onclick="exportNovedades()">⚠️ Novedades y Causales</button>
+      <select id="dl-reg-global" class="reg-dl-select" title="Filtra la regional para descargar sus Excel" onchange="syncGlobalRegLabel()">
+        <option value="">📍 Todas las Regionales</option>
+      </select>
+      <button class="btn btn-purple" onclick="exportPaqueteRegional()" title="Descarga un solo Excel con todas las hojas filtradas por la regional elegida">📦 Paquete Regional (.xls)</button>
+      <button class="btn btn-blue"   onclick="exportSinNovedad(false)">📥 Ruta Sin Nov.</button>
+      <button class="btn btn-teal"   onclick="exportSinNovPagos(false)">💵 Sin Nov. Pagos</button>
+      <button class="btn btn-green"  onclick="exportConfirmadas()">✅ Confirmadas</button>
+      <button class="btn btn-amber"  onclick="exportNovedades()">⚠️ Novedades</button>
     </div>
   </div>
 </header>
@@ -384,6 +401,7 @@
               <th class="num">Sin Nov. con Pago</th>
               <th class="num">Ventas Confirmadas</th>
               <th class="num">Con Novedad</th>
+              <th class="center">Descargar / Ver</th>
             </tr>
           </thead>
           <tbody id="tbl-reg-body"></tbody>
@@ -686,6 +704,10 @@ function renderPanel() {
       <td class="num"><span class="badge ${(r.sin_nov_p || 0) > 0 ? 'b-pay' : 'b-norm'}">${(r.sin_nov_p || 0).toLocaleString('en-US')}</span></td>
       <td class="num"><span class="badge ${r.conf > 0 ? 'b-ok' : 'b-norm'}">${r.conf}</span></td>
       <td class="num">${r.nov}</td>
+      <td class="center" style="white-space:nowrap">
+        <button class="btn btn-purple btn-sm" onclick="exportPaqueteRegional('${esc(r.regional)}')">📥 Excel</button>
+        <button class="btn btn-outline btn-sm" onclick="jumpRegRuta('${esc(r.regional)}')">🚗 Ruta</button>
+      </td>
     </tr>`;
   }).join('');
   html += `<tr style="background:#DBEAFE;font-weight:800">
@@ -697,6 +719,7 @@ function renderPanel() {
     <td class="num">${tot.sin_nov_p.toLocaleString('en-US')}</td>
     <td class="num">${tot.conf.toLocaleString('en-US')}</td>
     <td class="num">${tot.nov.toLocaleString('en-US')}</td>
+    <td class="center"><button class="btn btn-navy btn-sm" onclick="exportPaqueteRegional('')">📦 Todo</button></td>
   </tr>`;
   document.getElementById('tbl-reg-body').innerHTML = html;
 }
@@ -1014,8 +1037,80 @@ function downloadExcelXML(filename, sheets) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function slugReg(reg) {
+  return reg ? '_' + reg.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '') : '';
+}
+
+function getGlobalReg() {
+  const el = document.getElementById('dl-reg-global');
+  return el ? el.value : '';
+}
+
+function syncGlobalRegLabel() {
+  const reg = getGlobalReg();
+  // Sincroniza opcionalmente los filtros de regional en todas las pestañas para ver y descargar exactamente lo mismo
+  ['f-reg', 'fs-reg', 'fc-reg', 'fn-reg', 'fp-reg'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const hasOpt = [...sel.options].some(o => o.value === reg);
+    sel.value = hasOpt ? reg : '';
+  });
+  renderRuta(1);
+  renderSnp();
+  renderConf();
+  renderNov();
+  renderPagos();
+}
+
+function jumpRegRuta(reg) {
+  const gsel = document.getElementById('dl-reg-global');
+  if (gsel) gsel.value = reg;
+  syncGlobalRegLabel();
+  switchTab('ruta');
+}
+
+function exportPaqueteRegional(regOverride) {
+  const reg = (typeof regOverride === 'string') ? regOverride : getGlobalReg();
+  const filt = x => !reg || x.rg === reg;
+  const sinNov = DATA.records.filter(x => x.ct === 'SIN_NOVEDAD' && filt(x));
+  const snp    = DATA.records.filter(x => x.ct === 'SIN_NOVEDAD_CON_PAGO' && filt(x));
+  const conf   = DATA.records.filter(x => x.ct === 'CONFIRMADA' && filt(x));
+  const nov    = DATA.records.filter(x => x.ct === 'NOVEDAD' && filt(x));
+  const pags   = DATA.pagos.filter(p => !reg || p.regional === reg);
+
+  const hRuta = ['Prioridad','Fecha Dilig.','Mes','Origen','ID Contrato','ID Relacionado','Regional','Sede','Cobrador','Compañía','Estado Venta','Estado Confirmación','Cédula','Titular','Correo','Dirección','Teléfono 1','Teléfono 2','Valor Cuota','Atraso','Asesor Ventas','Nota Call Center','En Ambas Hojas'];
+  const toRuta = x => [x.pr,x.fd,x.md,x.or,x.id,x.ir,x.rg,x.sd,x.cb,x.cp,x.ev,x.ec,x.cd,x.tt,x.em||'',x.dr,x.t1,x.t2,x.vq,x.at,x.av,x.nc,x.ea?'SÍ':'NO'];
+  const hSnp  = ['Prioridad','Fecha Dilig.','Mes','Origen','ID Contrato','ID Relacionado','Regional','Sede','Cobrador','Compañía','Cédula','Titular','Correo','Dirección','Teléfono 1','Teléfono 2','Valor Cuota','Estado Pago','Fuente Pago','Fecha Pago','Valor Pago','Criterio Cruce','Confianza','Detalle Pago'];
+  const toSnp = x => [x.pr,x.fd,x.md,x.or,x.id,x.ir,x.rg,x.sd,x.cb,x.cp,x.cd,x.tt,x.em||'',x.dr,x.t1,x.t2,x.vq,x.pe,x.pf,x.pdt,x.pv,x.pc,x.pcf,x.prsm];
+  const hConf = ['Origen','ID Contrato','ID Relacionado','Fecha Dilig.','Regional','Sede','Compañía','Cédula','Titular','Teléfono 1','Valor Cuota','Tipo Solicitud','Estado Solicitud','Fase Actual Inicial','Estado Actual Previsión','Cobrador (Quien Reportó)','Usuario','Descripción del Cambio','Alerta Auditoría','Pago Detectado'];
+  const toConf = x => [x.or,x.id,x.ir,x.fd,x.rg,x.sd,x.cp,x.cd,x.tt,x.t1,x.vq,x.ts,x.es,x.fi,x.ep,x.qh,x.us,x.dc,x.aa||'OK - Listo Cambio Fase',x.prsm];
+  const hNov  = ['Origen','ID Contrato','ID Relacionado','Fecha Dilig.','Mes','Regional','Sede','Compañía','Cédula','Titular','Dirección','Teléfono 1','Valor Cuota','Causal No Confirmación','Tipo Solicitud','Estado Solicitud','Cobrador (Quien Reportó)','Descripción del Cambio','Observación Call','Pago Detectado'];
+  const toNov = x => [x.or,x.id,x.ir,x.fd,x.md,x.rg,x.sd,x.cp,x.cd,x.tt,x.dr,x.t1,x.vq,x.cs,x.ts,x.es,x.qh,x.dc,x.ob,x.prsm];
+  const hPag  = ['Origen','ID Contrato','ID Relacionado','Estado Gestión','Regional','Sede','Cobrador','Cédula','Titular','Teléfono 1','Fecha Dilig.','Valor Cuota','Fuente','Estado Pago','Confianza','Criterio Cruce','Fecha Pago','Valor Pago','Fila','Detalle'];
+  const toPag = p => [p.origen,p.id_contrato,p.id_relacionado,p.categoria,p.regional,p.sede,p.cobrador,p.cedula,p.titular,p.tel1,p.fecha_dilig,p.valor_cuota,p.fuente,p.estado_pago,p.confianza,p.criterio,p.fecha,p.valor,p.fila,p.detalle];
+
+  const regRows = (reg ? DATA.reg_summary.filter(r => r.regional === reg) : DATA.reg_summary)
+    .map(r => [r.regional,r.prev,r.inic,r.sin_nov,r.oct_prio,r.sin_nov_p||0,r.conf,r.nov]);
+
+  const sheets = [
+    { name:'Resumen_Control', headers:['Regional','Total Previsión','Total Inicial','Ruta Sin Nov. (Sin Pago)','Prioridad <= Octubre','Sin Nov. con Pago','Ventas Confirmadas','Con Novedad'], rows:regRows, moneyCols:[] },
+    { name:'Ruta_Prevision', headers:hRuta, rows:sinNov.filter(x => x.or === 'PREVISION').map(toRuta), moneyCols:[18] },
+    { name:'Ruta_Inicial',   headers:hRuta, rows:sinNov.filter(x => x.or === 'INICIAL').map(toRuta),   moneyCols:[18] },
+    { name:'SinNov_Con_Pagos', headers:hSnp, rows:snp.map(toSnp), moneyCols:[16,20] },
+    { name:'Ventas_Confirmadas', headers:hConf, rows:conf.map(toConf), moneyCols:[10] },
+    { name:'Novedades_Causales', headers:hNov,  rows:nov.map(toNov),   moneyCols:[12] },
+    { name:'Radar_Pagos', headers:hPag, rows:pags.map(toPag), moneyCols:[11,17] },
+  ];
+  const fname = reg ? `Control_Confirmacion_SFUN${slugReg(reg)}.xls` : 'Control_Confirmacion_SFUN_NACIONAL.xls';
+  downloadExcelXML(fname, sheets);
+}
+
 function exportSinNovedad(filteredOnly) {
-  const list = filteredOnly ? getFilteredRuta() : DATA.records.filter(x => x.ct === 'SIN_NOVEDAD');
+  const gReg = getGlobalReg();
+  const list = filteredOnly
+    ? getFilteredRuta()
+    : DATA.records.filter(x => x.ct === 'SIN_NOVEDAD' && (!gReg || x.rg === gReg));
+  const regTag = slugReg(filteredOnly ? (document.getElementById('f-reg').value || gReg) : gReg);
   const headers = ['Prioridad','Fecha Dilig.','Mes','Origen','ID Contrato','ID Relacionado','Regional','Sede','Cobrador','Compañía','Estado Venta','Estado Confirmación','Cédula','Titular','Correo','Dirección','Teléfono 1','Teléfono 2','Valor Cuota','Atraso','Asesor Ventas','Nota Call Center','Estado Pago','Detalle Pago','En Ambas Hojas'];
   const toRow = x => [x.pr,x.fd,x.md,x.or,x.id,x.ir,x.rg,x.sd,x.cb,x.cp,x.ev,x.ec,x.cd,x.tt,x.em||'',x.dr,x.t1,x.t2,x.vq,x.at,x.av,x.nc,x.pe,x.prsm,x.ea?'SÍ':'NO'];
   const prev = list.filter(x => x.or === 'PREVISION').map(toRow);
@@ -1024,35 +1119,42 @@ function exportSinNovedad(filteredOnly) {
   if (prev.length) sheets.push({ name:'Ruta_Prevision', headers, rows:prev, moneyCols:[18] });
   if (inic.length) sheets.push({ name:'Ruta_Inicial', headers, rows:inic, moneyCols:[18] });
   if (!sheets.length) sheets.push({ name:'Sin_Datos', headers, rows:[], moneyCols:[18] });
-  downloadExcelXML(filteredOnly ? 'Ruta_Sin_Novedad_Filtrada.xls' : '1_Ruta_Sin_Novedad_Confirmar.xls', sheets);
+  downloadExcelXML((filteredOnly ? 'Ruta_Sin_Novedad_Filtrada' : '1_Ruta_Sin_Novedad_Confirmar') + regTag + '.xls', sheets);
 }
 
 function exportConfirmadas() {
   const list = getFilteredConf();
+  const regTag = slugReg(document.getElementById('fc-reg').value || getGlobalReg());
   const headers = ['Origen','ID Contrato','ID Relacionado','Fecha Dilig.','Regional','Sede','Compañía','Cédula','Titular','Teléfono 1','Valor Cuota','Tipo Solicitud','Estado Solicitud','Fase Actual Inicial','Estado Actual Previsión','Cobrador (Quien Reportó)','Usuario','Descripción del Cambio','Alerta Auditoría','Pago Detectado'];
   const rows = list.map(x => [x.or,x.id,x.ir,x.fd,x.rg,x.sd,x.cp,x.cd,x.tt,x.t1,x.vq,x.ts,x.es,x.fi,x.ep,x.qh,x.us,x.dc,x.aa||'OK - Listo Cambio Fase',x.prsm]);
-  downloadExcelXML('2_Ventas_Confirmadas_Cambiar_Fase.xls', [{ name:'Ventas_Confirmadas', headers, rows, moneyCols:[10] }]);
+  downloadExcelXML('2_Ventas_Confirmadas_Cambiar_Fase' + regTag + '.xls', [{ name:'Ventas_Confirmadas', headers, rows, moneyCols:[10] }]);
 }
 
 function exportNovedades() {
   const list = getFilteredNov();
+  const regTag = slugReg(document.getElementById('fn-reg').value || getGlobalReg());
   const headers = ['Origen','ID Contrato','ID Relacionado','Fecha Dilig.','Mes','Regional','Sede','Compañía','Cédula','Titular','Dirección','Teléfono 1','Valor Cuota','Causal No Confirmación','Tipo Solicitud','Estado Solicitud','Cobrador (Quien Reportó)','Descripción del Cambio','Observación Call','Pago Detectado'];
   const rows = list.map(x => [x.or,x.id,x.ir,x.fd,x.md,x.rg,x.sd,x.cp,x.cd,x.tt,x.dr,x.t1,x.vq,x.cs,x.ts,x.es,x.qh,x.dc,x.ob,x.prsm]);
-  downloadExcelXML('3_Novedades_No_Confirmadas_Causales.xls', [{ name:'Novedades_Causales', headers, rows, moneyCols:[12] }]);
+  downloadExcelXML('3_Novedades_No_Confirmadas_Causales' + regTag + '.xls', [{ name:'Novedades_Causales', headers, rows, moneyCols:[12] }]);
 }
 
 function exportPagos() {
   const list = getFilteredPagos();
+  const regTag = slugReg(document.getElementById('fp-reg').value || getGlobalReg());
   const headers = ['Origen','ID Contrato','ID Relacionado','Estado Gestión','Regional','Sede','Cobrador','Cédula','Titular','Teléfono 1','Fecha Dilig.','Valor Cuota','Fuente','Estado Pago','Confianza','Criterio Cruce','Fecha Pago','Valor Pago','Fila','Detalle'];
   const rows = list.map(p => [p.origen,p.id_contrato,p.id_relacionado,p.categoria,p.regional,p.sede,p.cobrador,p.cedula,p.titular,p.tel1,p.fecha_dilig,p.valor_cuota,p.fuente,p.estado_pago,p.confianza,p.criterio,p.fecha,p.valor,p.fila,p.detalle]);
-  downloadExcelXML('4_Posibles_Pagos_Confirmacion.xls', [{ name:'Posibles_Pagos', headers, rows, moneyCols:[11,17] }]);
+  downloadExcelXML('5_Radar_Posibles_Pagos' + regTag + '.xls', [{ name:'Posibles_Pagos', headers, rows, moneyCols:[11,17] }]);
 }
 
 function exportSinNovPagos(filteredOnly) {
-  const list = filteredOnly ? getFilteredSnp() : DATA.records.filter(x => x.ct === 'SIN_NOVEDAD_CON_PAGO');
+  const gReg = getGlobalReg();
+  const list = filteredOnly
+    ? getFilteredSnp()
+    : DATA.records.filter(x => x.ct === 'SIN_NOVEDAD_CON_PAGO' && (!gReg || x.rg === gReg));
+  const regTag = slugReg(filteredOnly ? (document.getElementById('fs-reg').value || gReg) : gReg);
   const headers = ['Prioridad','Fecha Dilig.','Mes','Origen','ID Contrato','ID Relacionado','Regional','Sede','Cobrador','Compañía','Cédula','Titular','Correo','Dirección','Teléfono 1','Teléfono 2','Valor Cuota','Estado Pago','Fuente Pago','Fecha Pago','Valor Pago','Criterio Cruce','Confianza','Detalle Pago'];
   const rows = list.map(x => [x.pr,x.fd,x.md,x.or,x.id,x.ir,x.rg,x.sd,x.cb,x.cp,x.cd,x.tt,x.em||'',x.dr,x.t1,x.t2,x.vq,x.pe,x.pf,x.pdt,x.pv,x.pc,x.pcf,x.prsm]);
-  downloadExcelXML(filteredOnly ? 'Sin_Novedad_Con_Pagos_Filtrado.xls' : '4_Sin_Novedad_Con_Posibles_Pagos.xls', [{ name:'SinNov_Con_Pagos', headers, rows, moneyCols:[16,20] }]);
+  downloadExcelXML((filteredOnly ? 'Sin_Novedad_Con_Pagos_Filtrado' : '4_Sin_Novedad_Con_Posibles_Pagos') + regTag + '.xls', [{ name:'SinNov_Con_Pagos', headers, rows, moneyCols:[16,20] }]);
 }
 
 function exportResumenRegional() {
@@ -1063,6 +1165,7 @@ function exportResumenRegional() {
 
 (async function init() {
   DATA = await decodePayload();
+  populateSelect('dl-reg-global', DATA.records.map(x => x.rg), '📍 Todas las Regionales');
   const sinNov = DATA.records.filter(x => x.ct === 'SIN_NOVEDAD');
   populateSelect('f-reg',  sinNov.map(x => x.rg), 'Todas las Regionales');
   populateSelect('f-sede', sinNov.map(x => x.sd), 'Todas las Sedes');
