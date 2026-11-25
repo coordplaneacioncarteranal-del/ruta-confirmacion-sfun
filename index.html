@@ -105,15 +105,15 @@
     background: transparent;
     border: none;
     border-bottom: 3px solid transparent;
-    padding: 12px 16px;
-    font-size: 13.5px;
+    padding: 11px 12px;
+    font-size: 12.8px;
     font-weight: 700;
     color: var(--muted);
     cursor: pointer;
     white-space: nowrap;
     display: inline-flex;
     align-items: center;
-    gap: 7px;
+    gap: 6px;
   }
   .tab-btn:hover { color: var(--navy); }
   .tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); background: #EFF6FF; }
@@ -364,22 +364,22 @@
 
     <div class="grid-2">
       <div class="card">
-        <div class="card-title">Pendientes Sin Novedad por Regional (Prioridad de Visita)</div>
+        <div class="card-title" id="title-chart-reg">Pendientes Sin Novedad por Regional (Prioridad de Visita)</div>
         <div id="chart-reg"></div>
       </div>
       <div class="card">
-        <div class="card-title">Causales de No Confirmación (Novedades ASESOR_COBRANZA)</div>
+        <div class="card-title" id="title-chart-cau">Causales de No Confirmación (Novedades ASESOR_COBRANZA)</div>
         <div id="chart-causales"></div>
       </div>
     </div>
 
     <div class="grid-2">
       <div class="card">
-        <div class="card-title">Antigüedad de Contratos Sin Novedad (Fecha Diligenciamiento)</div>
+        <div class="card-title" id="title-chart-mes">Antigüedad de Contratos Sin Novedad (Fecha Diligenciamiento)</div>
         <div id="chart-meses"></div>
       </div>
       <div class="card">
-        <div class="card-title">Cobradores que Más Reportan Gestión en Anotaciones</div>
+        <div class="card-title" id="title-chart-cob">Cobradores que Más Reportan Gestión en Anotaciones</div>
         <div id="chart-cobradores"></div>
       </div>
     </div>
@@ -630,15 +630,57 @@ function populateSelect(elId, vals, firstLabel) {
 }
 
 function renderPanel() {
-  const k = DATA.kpis;
+  const gReg = getGlobalReg();
+  const recs = gReg ? DATA.records.filter(x => x.rg === gReg) : DATA.records;
+  const pags = gReg ? DATA.pagos.filter(p => p.regional === gReg) : DATA.pagos;
+
+  const prevAll = recs.filter(x => x.or === 'PREVISION');
+  const inicAll = recs.filter(x => x.or === 'INICIAL');
+  const sinNov  = recs.filter(x => x.ct === 'SIN_NOVEDAD');
+  const snp     = recs.filter(x => x.ct === 'SIN_NOVEDAD_CON_PAGO');
+  const conf    = recs.filter(x => x.ct === 'CONFIRMADA');
+  const nov     = recs.filter(x => x.ct === 'NOVEDAD');
+  const octPrio = sinNov.filter(x => x.po <= 2);
+
+  const uniqCeds = new Set(recs.map(x => x.cd).filter(Boolean));
+  const prevCeds = new Set(prevAll.map(x => x.cd).filter(Boolean));
+  const inicCeds = new Set(inicAll.map(x => x.cd).filter(Boolean));
+  let solap = 0;
+  prevCeds.forEach(c => { if (inicCeds.has(c)) solap++; });
+
+  const k = {
+    total_registros: recs.length,
+    total_prevision: prevAll.length,
+    total_inicial: inicAll.length,
+    titulares_unicos: uniqCeds.size,
+    solapados: solap,
+    sin_novedad_total: sinNov.length,
+    sin_novedad_prev: sinNov.filter(x => x.or === 'PREVISION').length,
+    sin_novedad_inic: sinNov.filter(x => x.or === 'INICIAL').length,
+    oct_prioridad_total: octPrio.length,
+    oct_prioridad_prev: octPrio.filter(x => x.or === 'PREVISION').length,
+    oct_prioridad_inic: octPrio.filter(x => x.or === 'INICIAL').length,
+    sin_nov_pagos_total: snp.length,
+    sin_nov_pagos_sin_id: snp.filter(x => x.ps).length,
+    sin_nov_pagos_erp: snp.filter(x => !x.ps).length,
+    confirmadas_total: conf.length,
+    confirmadas_prev: conf.filter(x => x.or === 'PREVISION').length,
+    confirmadas_inic: conf.filter(x => x.or === 'INICIAL').length,
+    confirmadas_alerta: conf.filter(x => x.aa).length,
+    novedades_total: nov.length,
+    novedades_prev: nov.filter(x => x.or === 'PREVISION').length,
+    novedades_inic: nov.filter(x => x.or === 'INICIAL').length,
+    pagos_ctos: new Set(pags.map(p => p.origen + '|' + p.id_contrato)).size,
+  };
+
   document.getElementById('tb-ruta').textContent = k.sin_novedad_total.toLocaleString('en-US');
   document.getElementById('tb-snp').textContent  = k.sin_nov_pagos_total.toLocaleString('en-US');
   document.getElementById('tb-conf').textContent = k.confirmadas_total.toLocaleString('en-US');
   document.getElementById('tb-nov').textContent  = k.novedades_total.toLocaleString('en-US');
-  document.getElementById('tb-pag').textContent  = (k.pagos_sin_id_ctos + k.pagos_erp_ctos).toLocaleString('en-US');
+  document.getElementById('tb-pag').textContent  = k.pagos_ctos.toLocaleString('en-US');
 
   const kpis = [
-    { cls:'navy',  lbl:'Total Contratos Base', val:k.total_registros.toLocaleString('en-US'), sub:`Previsión: ${k.total_prevision.toLocaleString('en-US')}  |  Inicial: ${k.total_inicial.toLocaleString('en-US')}` },
+    { cls:'navy',  lbl:'Total Contratos Base' + (gReg ? ` (${gReg})` : ''), val:k.total_registros.toLocaleString('en-US'), sub:`Previsión: ${k.total_prevision.toLocaleString('en-US')}  |  Inicial: ${k.total_inicial.toLocaleString('en-US')}` },
     { cls:'red',   lbl:'Ruta Sin Novedad (Sin Pago)', val:k.sin_novedad_total.toLocaleString('en-US'), sub:`Previsión: ${k.sin_novedad_prev.toLocaleString('en-US')}  |  Inicial: ${k.sin_novedad_inic.toLocaleString('en-US')}` },
     { cls:'amber', lbl:'Prioridad ≤ Octubre (Sin Pago)', val:k.oct_prioridad_total.toLocaleString('en-US'), sub:`Previsión: ${k.oct_prioridad_prev.toLocaleString('en-US')}  |  Inicial: ${k.oct_prioridad_inic.toLocaleString('en-US')}` },
     { cls:'teal',  lbl:'Sin Novedad con Posible Pago', val:k.sin_nov_pagos_total.toLocaleString('en-US'), sub:`${k.sin_nov_pagos_sin_id} Sin ID en Drive  |  ${k.sin_nov_pagos_erp} ya en ERP` },
@@ -647,52 +689,96 @@ function renderPanel() {
   ];
   document.getElementById('kpi-grid').innerHTML = kpis.map(x => `
     <div class="kpi-card ${x.cls}">
-      <div class="kpi-label">${x.lbl}</div>
+      <div class="kpi-label">${esc(x.lbl)}</div>
       <div class="kpi-val">${x.val}</div>
       <div class="kpi-sub">${x.sub}</div>
     </div>`).join('');
 
+  const scopeBadge = gReg
+    ? `<span class="badge b-med" style="margin-right:8px">📍 FILTRO ACTIVO: ${esc(gReg)}</span> <button class="btn btn-outline btn-sm" style="margin-right:8px;padding:2px 8px" onclick="document.getElementById('dl-reg-global').value='';syncGlobalRegLabel()">✕ Ver todo el país</button>`
+    : '';
   document.getElementById('overlap-note').innerHTML =
-    `<strong>Control de duplicados y enfoque puro de visitas:</strong> Entre <strong>PREVISIÓN (${k.total_prevision})</strong> e <strong>INICIAL (${k.total_inicial.toLocaleString('en-US')})</strong> hay <strong>${k.titulares_unicos.toLocaleString('en-US')} titulares únicos</strong> (<strong>${k.solapados}</strong> cédulas en ambas bases). Se separaron <strong>${k.sin_nov_pagos_total} contratos sin novedad que sí tienen posible pago</strong> en su propia pestaña para que la <strong>Ruta Sin Novedad (${k.sin_novedad_total.toLocaleString('en-US')})</strong> se enfoque exclusivamente en clientes sin novedad y sin pago.`;
+    `${scopeBadge}<strong>Control de duplicados y enfoque puro de visitas:</strong> Entre <strong>PREVISIÓN (${k.total_prevision})</strong> e <strong>INICIAL (${k.total_inicial.toLocaleString('en-US')})</strong> hay <strong>${k.titulares_unicos.toLocaleString('en-US')} titulares únicos</strong> (<strong>${k.solapados}</strong> cédulas en ambas bases). Se separaron <strong>${k.sin_nov_pagos_total} contratos sin novedad con posible pago</strong> en su propia pestaña para que la <strong>Ruta Sin Novedad (${k.sin_novedad_total.toLocaleString('en-US')})</strong> muestre solo clientes sin novedad y sin pago.`;
 
-  // Bar charts
-  const maxReg = Math.max(1, ...DATA.reg_summary.map(r => r.sin_nov));
-  document.getElementById('chart-reg').innerHTML = DATA.reg_summary.slice(0, 12).map(r => `
-    <div class="bar-row">
-      <div class="bar-lbl" title="${esc(r.regional)}">${esc(r.regional)}</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${(r.sin_nov/maxReg*100).toFixed(1)}%;background:linear-gradient(90deg,#1E40AF,#3B82F6)"></div></div>
-      <div class="bar-num">${r.sin_nov.toLocaleString('en-US')} <span style="color:#D97706;font-size:10.5px">(${r.oct_prio} oct)</span></div>
-    </div>`).join('');
+  // Gráfica 1: por Regional (si Nacional) o por Sede/Ciudad (si eligió una Regional!)
+  if (gReg) {
+    document.getElementById('title-chart-reg').textContent = `Pendientes Sin Novedad por Sede / Ciudad — ${gReg}`;
+    const bySede = {};
+    sinNov.forEach(x => {
+      const s = x.sd || 'SIN SEDE';
+      if (!bySede[s]) bySede[s] = { lbl: s, sin_nov: 0, oct_prio: 0 };
+      bySede[s].sin_nov++;
+      if (x.po <= 2) bySede[s].oct_prio++;
+    });
+    const listS = Object.values(bySede).sort((a, b) => b.sin_nov - a.sin_nov).slice(0, 12);
+    const maxS = Math.max(1, ...listS.map(r => r.sin_nov));
+    document.getElementById('chart-reg').innerHTML = listS.map(r => `
+      <div class="bar-row">
+        <div class="bar-lbl" title="${esc(r.lbl)}">${esc(r.lbl)}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${(r.sin_nov/maxS*100).toFixed(1)}%;background:linear-gradient(90deg,#1E40AF,#3B82F6)"></div></div>
+        <div class="bar-num">${r.sin_nov.toLocaleString('en-US')} <span style="color:#D97706;font-size:10.5px">(${r.oct_prio} oct)</span></div>
+      </div>`).join('') || '<p style="color:#64748B;font-size:13px">Sin pendientes en esta regional.</p>';
+  } else {
+    document.getElementById('title-chart-reg').textContent = 'Pendientes Sin Novedad por Regional (Prioridad de Visita)';
+    const maxReg = Math.max(1, ...DATA.reg_summary.map(r => r.sin_nov));
+    document.getElementById('chart-reg').innerHTML = DATA.reg_summary.slice(0, 12).map(r => `
+      <div class="bar-row" style="cursor:pointer" onclick="document.getElementById('dl-reg-global').value='${esc(r.regional)}';syncGlobalRegLabel()">
+        <div class="bar-lbl" title="${esc(r.regional)}">${esc(r.regional)}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${(r.sin_nov/maxReg*100).toFixed(1)}%;background:linear-gradient(90deg,#1E40AF,#3B82F6)"></div></div>
+        <div class="bar-num">${r.sin_nov.toLocaleString('en-US')} <span style="color:#D97706;font-size:10.5px">(${r.oct_prio} oct)</span></div>
+      </div>`).join('');
+  }
 
-  const maxCau = Math.max(1, ...DATA.causales_summary.map(c => c.cnt));
-  document.getElementById('chart-causales').innerHTML = DATA.causales_summary.map(c => `
+  // Gráfica 2: Causales dinámicas según Regional
+  document.getElementById('title-chart-cau').textContent = 'Causales de No Confirmación' + (gReg ? ` — ${gReg}` : ' (Novedades ASESOR_COBRANZA)');
+  const cauMap = {};
+  nov.forEach(x => { cauMap[x.cs] = (cauMap[x.cs] || 0) + 1; });
+  const cauList = Object.entries(cauMap).map(([causal, cnt]) => ({ causal, cnt, pct: nov.length ? +(cnt / nov.length * 100).toFixed(1) : 0 })).sort((a, b) => b.cnt - a.cnt);
+  const maxCau = Math.max(1, ...cauList.map(c => c.cnt));
+  document.getElementById('chart-causales').innerHTML = cauList.map(c => `
     <div class="bar-row" style="cursor:pointer" onclick="jumpCausal('${esc(c.causal)}')">
       <div class="bar-lbl" title="${esc(c.causal)}">${esc(c.causal)}</div>
       <div class="bar-track"><div class="bar-fill" style="width:${(c.cnt/maxCau*100).toFixed(1)}%;background:linear-gradient(90deg,#D97706,#F59E0B)"></div></div>
       <div class="bar-num">${c.cnt} (${c.pct}%)</div>
-    </div>`).join('') || '<p style="color:#64748B;font-size:13px">Sin novedades registradas.</p>';
+    </div>`).join('') || '<p style="color:#64748B;font-size:13px">Sin novedades registradas en esta regional.</p>';
 
-  const maxMes = Math.max(1, ...DATA.meses_summary.map(m => m.cnt));
-  document.getElementById('chart-meses').innerHTML = DATA.meses_summary.map(m => {
+  // Gráfica 3: Meses dinámicos según Regional
+  document.getElementById('title-chart-mes').textContent = 'Antigüedad de Contratos Sin Novedad' + (gReg ? ` — ${gReg}` : ' (Fecha Diligenciamiento)');
+  const mesMap = {};
+  sinNov.forEach(x => { mesMap[x.md] = (mesMap[x.md] || 0) + 1; });
+  const mesList = Object.entries(mesMap).map(([mes, cnt]) => ({ mes, cnt })).sort((a, b) => a.mes.localeCompare(b.mes));
+  const maxMes = Math.max(1, ...mesList.map(m => m.cnt));
+  document.getElementById('chart-meses').innerHTML = mesList.map(m => {
     const isOld = m.mes <= '2026-10';
     return `<div class="bar-row">
       <div class="bar-lbl">${esc(m.mes)} ${isOld ? '🔥' : ''}</div>
       <div class="bar-track"><div class="bar-fill" style="width:${(m.cnt/maxMes*100).toFixed(1)}%;background:${isOld ? '#DC2626' : '#0F766E'}"></div></div>
       <div class="bar-num">${m.cnt.toLocaleString('en-US')}</div>
     </div>`;
-  }).join('');
+  }).join('') || '<p style="color:#64748B;font-size:13px">Sin pendientes en esta regional.</p>';
 
-  const maxCob = Math.max(1, ...DATA.cobradores_gestion.map(c => c.total));
-  document.getElementById('chart-cobradores').innerHTML = DATA.cobradores_gestion.slice(0, 10).map(c => `
+  // Gráfica 4: Cobradores que reportan dinámicos según Regional
+  document.getElementById('title-chart-cob').textContent = 'Cobradores que Más Reportan Gestión' + (gReg ? ` — ${gReg}` : ' en Anotaciones');
+  const cobMap = {};
+  [...conf, ...nov].forEach(x => {
+    const q = x.qh || '(Sin nombre)';
+    if (!cobMap[q]) cobMap[q] = { cobrador: q, conf: 0, nov: 0, total: 0 };
+    cobMap[q].total++;
+    if (x.ct === 'CONFIRMADA') cobMap[q].conf++; else cobMap[q].nov++;
+  });
+  const cobList = Object.values(cobMap).sort((a, b) => b.total - a.total).slice(0, 10);
+  const maxCob = Math.max(1, ...cobList.map(c => c.total));
+  document.getElementById('chart-cobradores').innerHTML = cobList.map(c => `
     <div class="bar-row">
       <div class="bar-lbl" title="${esc(c.cobrador)}">${esc(c.cobrador)}</div>
       <div class="bar-track"><div class="bar-fill" style="width:${(c.total/maxCob*100).toFixed(1)}%;background:linear-gradient(90deg,#0F766E,#14B8A6)"></div></div>
       <div class="bar-num">${c.total} <span style="color:#15803D;font-size:10.5px">(${c.conf} ok)</span></div>
-    </div>`).join('');
+    </div>`).join('') || '<p style="color:#64748B;font-size:13px">Sin gestiones de cobrador en esta regional.</p>';
 
-  // Tabla Regional
+  // Tabla Regional (filtrada si hay regional activa)
+  const regList = gReg ? DATA.reg_summary.filter(r => r.regional === gReg) : DATA.reg_summary;
   let tot = { prev:0, inic:0, sin_nov:0, oct_prio:0, sin_nov_p:0, conf:0, nov:0 };
-  let html = DATA.reg_summary.map(r => {
+  let html = regList.map(r => {
     tot.prev += r.prev; tot.inic += r.inic; tot.sin_nov += r.sin_nov; tot.oct_prio += r.oct_prio;
     tot.sin_nov_p += (r.sin_nov_p || 0); tot.conf += r.conf; tot.nov += r.nov;
     return `<tr>
@@ -711,7 +797,7 @@ function renderPanel() {
     </tr>`;
   }).join('');
   html += `<tr style="background:#DBEAFE;font-weight:800">
-    <td>TOTAL CONSOLIDADO</td>
+    <td>${gReg ? 'TOTAL ' + esc(gReg) : 'TOTAL CONSOLIDADO'}</td>
     <td class="num">${tot.prev.toLocaleString('en-US')}</td>
     <td class="num">${tot.inic.toLocaleString('en-US')}</td>
     <td class="num">${tot.sin_nov.toLocaleString('en-US')}</td>
@@ -719,7 +805,7 @@ function renderPanel() {
     <td class="num">${tot.sin_nov_p.toLocaleString('en-US')}</td>
     <td class="num">${tot.conf.toLocaleString('en-US')}</td>
     <td class="num">${tot.nov.toLocaleString('en-US')}</td>
-    <td class="center"><button class="btn btn-navy btn-sm" onclick="exportPaqueteRegional('')">📦 Todo</button></td>
+    <td class="center"><button class="btn btn-navy btn-sm" onclick="exportPaqueteRegional('${esc(gReg)}')">📦 ${gReg ? 'Excel' : 'Todo'}</button></td>
   </tr>`;
   document.getElementById('tbl-reg-body').innerHTML = html;
 }
@@ -941,14 +1027,21 @@ function getFilteredNov() {
 }
 
 function renderNov() {
+  const or  = document.getElementById('fn-or').value;
+  const rg  = document.getElementById('fn-reg').value;
   const selCau = document.getElementById('fn-cau').value;
+  const baseNov = DATA.records.filter(x => x.ct === 'NOVEDAD' && (!or || x.or === or) && (!rg || x.rg === rg));
+  const cmap = {};
+  baseNov.forEach(x => { cmap[x.cs] = (cmap[x.cs] || 0) + 1; });
+  const cList = Object.entries(cmap).map(([causal, cnt]) => ({ causal, cnt, pct: baseNov.length ? +(cnt / baseNov.length * 100).toFixed(1) : 0 })).sort((a, b) => b.cnt - a.cnt);
+
   document.getElementById('causal-cards').innerHTML =
     `<div class="causal-card ${selCau === '' ? 'active' : ''}" onclick="document.getElementById('fn-cau').value='';renderNov()">
-      <div class="c-num">${DATA.kpis.novedades_total}</div>
-      <div class="c-lbl">Todas las Novedades</div>
+      <div class="c-num">${baseNov.length}</div>
+      <div class="c-lbl">Todas las Novedades${rg ? ' (' + esc(rg) + ')' : ''}</div>
       <div class="c-pct">100% de no confirmadas</div>
     </div>` +
-    DATA.causales_summary.map(c => `
+    cList.map(c => `
       <div class="causal-card ${selCau === c.causal ? 'active' : ''}" onclick="document.getElementById('fn-cau').value='${esc(c.causal)}';renderNov()">
         <div class="c-num">${c.cnt}</div>
         <div class="c-lbl">${esc(c.causal)}</div>
@@ -1048,13 +1141,26 @@ function getGlobalReg() {
 
 function syncGlobalRegLabel() {
   const reg = getGlobalReg();
-  // Sincroniza opcionalmente los filtros de regional en todas las pestañas para ver y descargar exactamente lo mismo
+  // Actualizar filtros de regional y cascada de sedes en todas las pestañas
   ['f-reg', 'fs-reg', 'fc-reg', 'fn-reg', 'fp-reg'].forEach(id => {
     const sel = document.getElementById(id);
     if (!sel) return;
-    const hasOpt = [...sel.options].some(o => o.value === reg);
-    sel.value = hasOpt ? reg : '';
+    if (!reg) {
+      sel.value = '';
+    } else {
+      const hasOpt = [...sel.options].some(o => o.value === reg);
+      if (!hasOpt) {
+        const opt = document.createElement('option');
+        opt.value = reg; opt.textContent = reg;
+        sel.appendChild(opt);
+      }
+      sel.value = reg;
+    }
   });
+  // Cascada de Sedes en Ruta según Regional elegida
+  const sinNovScoped = DATA.records.filter(x => x.ct === 'SIN_NOVEDAD' && (!reg || x.rg === reg));
+  populateSelect('f-sede', sinNovScoped.map(x => x.sd), 'Todas las Sedes');
+  renderPanel();
   renderRuta(1);
   renderSnp();
   renderConf();
