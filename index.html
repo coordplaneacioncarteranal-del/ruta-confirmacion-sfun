@@ -167,6 +167,7 @@
 
   /* CHARTS / CARDS GRID */
   .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 16px; margin-bottom: 18px; }
+  .grid-2 > * { min-width: 0; }
   .card {
     background: var(--card);
     border-radius: 12px;
@@ -174,6 +175,7 @@
     padding: 16px 18px;
     box-shadow: 0 2px 8px rgba(15,23,42,.04);
     margin-bottom: 16px;
+    min-width: 0;
   }
   .card-title {
     font-size: 14.5px;
